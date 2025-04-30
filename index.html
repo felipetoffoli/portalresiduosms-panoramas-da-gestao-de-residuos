@@ -1,0 +1,388 @@
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<!-- Bootstrap CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        transition: background-color 0.3s ease;
+    }
+
+    #map {
+        width: 100%;
+        height: 100vh;
+    }
+
+    /* Controles do mapa */
+    .map-controls {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        display: flex;
+        gap: 10px;
+        width: auto;
+        max-width: 90%;
+    }
+
+    .search-container {
+        width: 250px;
+        /* Largura reduzida */
+    }
+
+    /* Estilo para o rótulo permanente */
+    .city-label {
+        font-weight: bold;
+        font-size: 14px;
+        color: #333;
+        text-shadow: 1px 1px 2px white;
+        padding: 2px 5px;
+        background-color: rgba(255, 255, 255, 0.7);
+        border-radius: 4px;
+        pointer-events: none;
+    }
+
+    /* Estilo para o modal de PDF */
+    .modal-dialog {
+        max-width: 90%;
+        height: 90vh;
+        margin: 5vh auto;
+    }
+
+    .modal-content {
+        height: 100%;
+    }
+
+    .modal-body {
+        height: calc(100% - 120px);
+        padding: 0;
+    }
+
+    .modal-body iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+    }
+
+    /* Modo escuro */
+    .dark-mode {
+        background-color: #121212;
+    }
+
+    .dark-mode .leaflet-tile {
+        filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+    }
+
+    .dark-mode .leaflet-control,
+    .dark-mode .leaflet-bar {
+        background: #333;
+    }
+
+    .dark-mode .leaflet-control a {
+        color: #fff;
+        background: #444;
+    }
+
+    /* Estilos personalizados para os botões do modal */
+    .modal-footer .btn {
+        border-radius: 20px;
+        /* Botões mais arredondados */
+        padding: 5px 15px;
+        /* Ajuste de padding */
+    }
+
+    .modal-footer .btn-primary {
+        background-color: #28a745;
+        /* Verde */
+        border-color: #28a745;
+    }
+
+    .modal-footer .btn-primary:hover {
+        background-color: #218838;
+        /* Verde mais escuro no hover */
+        border-color: #1e7e34;
+    }
+
+    .modal-backdrop {
+        position: unset !important;
+    }
+
+    .modal-backdrop.show {
+        opacity: 0 !important;
+    }
+
+    /* Responsividade */
+    @media (max-width: 768px) {
+        .map-controls {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .search-container {
+            width: 200px;
+            /* Largura ainda menor em mobile */
+        }
+
+        .btn-group {
+            margin-top: 5px;
+        }
+    }
+</style>
+
+<div id="map"></div>
+
+<!-- Controles do mapa -->
+<div class="map-controls">
+    <div class="search-container">
+        <div class="input-group input-group-sm"> <!-- Adicionado input-group-sm para reduzir tamanho -->
+            <input type="text" id="citySearch" class="form-control form-control-sm" placeholder="Pesquisar cidade...">
+            <button class="btn btn-outline-secondary btn-sm" type="button" id="searchButton">
+                <i class="bi bi-search"></i>
+            </button>
+        </div>
+    </div>
+    <div class="btn-group btn-group-sm"> <!-- Adicionado btn-group-sm -->
+        <button class="btn btn-outline-secondary btn-sm" id="darkModeToggle">
+            <i class="bi bi-moon"></i>
+        </button>
+    </div>
+</div>
+
+<!-- Modal para exibir o PDF -->
+<div class="modal fade" id="pdfModal" tabindex="-1" aria-labelledby="pdfModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pdfModalLabel">Visualização do PDF</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <iframe id="pdfViewer" src=""></iframe>
+            </div>
+            <div class="modal-footer">
+                <a id="downloadPdf" href="#" target="_blank" class="btn btn-primary">Visualizar</a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Bootstrap JS + Popper -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // Inicialização do mapa
+    var map = L.map('map').setView([-20.44, -54.59], 7);
+    map.dragging.disable();
+    map.touchZoom.disable();
+    map.scrollWheelZoom.disable();
+    // Camada base do mapa
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Objeto para armazenar todos os marcadores
+    var cityMarkers = {};
+
+    // Função para adicionar marcadores
+    function addCityMarker(lat, lng, cityName, pdfUrl) {
+        var marker = L.marker([lat, lng]).addTo(map);
+
+        // Armazena o marcador no objeto
+        cityMarkers[cityName.toLowerCase()] = marker;
+
+        // Adiciona rótulo permanente
+        marker.bindTooltip(cityName, {
+            permanent: true,
+            direction: 'right',
+            className: 'city-label'
+        });
+
+        // Popup com PDF (aparece ao clicar)
+        marker.bindPopup(`
+                <div style="max-width: 250px;">
+                    <h3 style="margin-top: 0;">${cityName}</h3>
+                    <p>Relatório de Gestão de Resíduos Sólidos:</p>
+                    <a href="#" 
+                        onclick="openPdfModal('${cityName}', '${pdfUrl}'); return false;" 
+                        style="display: inline-block; 
+                                padding: 6px 15px; 
+                                background-color: #28a745; 
+                                color: white !important; 
+                                font-weight: bold; 
+                                text-decoration: none !important; 
+                                border-radius: 15px; 
+                                border: 1px solid #28a745; 
+                                transition: all 0.3s ease; 
+                                text-align: center; 
+                                cursor: pointer;"
+                        onmouseover="this.style.backgroundColor='#218838'; this.style.borderColor='#218838'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 2px 4px rgba(0, 0, 0, 0.1)';"
+                        onmouseout="this.style.backgroundColor='#28a745'; this.style.borderColor='#28a745'; this.style.transform='none'; this.style.boxShadow='none'">
+                        <i class="bi bi-file-earmark-pdf" style="margin-right: 5px;"></i> Abrir PDF
+                    </a>
+                </div>
+            `);
+    }
+
+    // Função para abrir o modal com o PDF
+    function openPdfModal(cityName, pdfUrl) {
+        // Configura o título do modal
+        document.getElementById('pdfModalLabel').textContent = cityName + ' - Relatório de Gestão de Resíduos Sólidos';
+
+        // Configura o iframe para exibir o PDF
+        var pdfViewer = document.getElementById('pdfViewer');
+        pdfViewer.src = pdfUrl;
+
+        // Configura o link de download
+        document.getElementById('downloadPdf').href = pdfUrl;
+
+        // Mostra o modal
+        var pdfModal = new bootstrap.Modal(document.getElementById('pdfModal'));
+        pdfModal.show();
+    }
+
+    // Função para pesquisar cidade
+    function searchCity() {
+        var searchTerm = document.getElementById('citySearch').value.toLowerCase().trim();
+
+        if (searchTerm === '') return;
+
+        if (cityMarkers[searchTerm]) {
+            var marker = cityMarkers[searchTerm];
+            map.setView(marker.getLatLng(), 12);
+            marker.openPopup();
+        } else {
+            // Verifica por correspondência parcial
+            var found = false;
+            for (var city in cityMarkers) {
+                if (city.includes(searchTerm)) {
+                    var marker = cityMarkers[city];
+                    map.setView(marker.getLatLng(), 10);
+                    marker.openPopup();
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                alert('Cidade não encontrada. Verifique o nome e tente novamente.');
+            }
+        }
+    }
+
+    // Modo escuro
+    function toggleDarkMode() {
+        document.body.classList.toggle('dark-mode');
+        var icon = document.querySelector('#darkModeToggle i');
+
+        if (document.body.classList.contains('dark-mode')) {
+            icon.classList.remove('bi-moon');
+            icon.classList.add('bi-sun');
+        } else {
+            icon.classList.remove('bi-sun');
+            icon.classList.add('bi-moon');
+        }
+    }
+
+    // Event listeners
+    document.getElementById('searchButton').addEventListener('click', searchCity);
+    document.getElementById('citySearch').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') searchCity();
+    });
+    document.getElementById('darkModeToggle').addEventListener('click', toggleDarkMode);
+
+    // Adicionando todos os marcadores das cidades
+    // Formato: addCityMarker(latitude, longitude, "Nome da Cidade", "URL do PDF")
+
+    // Exemplo com link específico:
+    addCityMarker(-21.6145, -55.1683, "Maracaju",
+        "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-gestao-de-RS-de-Maracaju_final.pdf");
+
+    // Demais cidades (coloque os links reais de cada PDF)
+    addCityMarker(-22.1928, -55.9517, "Antônio João", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Antonio-Joao-MS_final_atualizado.pdf");
+    addCityMarker(-22.9386, -55.6336, "Aral Moreira", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Aral-Moreira-MS_final_atualizado.pdf");
+    addCityMarker(-19.9167, -54.3667, "Bandeirantes", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Bandeirantes-MS_revMP_Assin-atualizacao.pdf");
+    addCityMarker(-19.5319, -54.0439, "Camapuã", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Camapua-MS_revMP-atualizacao.pdf");
+    addCityMarker(-20.4686, -54.6222, "Campo Grande", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Campo-Grande-MS_Final.pdf");
+    addCityMarker(-22.2208, -54.8058, "Dourados", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Dourados-final.pdf");
+    addCityMarker(-22.3789, -54.5131, "Fatima do Sul", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Fatima-do-Sul_final.pdf");
+    addCityMarker(-22.4136, -54.2333, "Glória de Dourados", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Gloria-de-Dourados-MS_v4_PosPref_junho-2023.pdf");
+    addCityMarker(-22.3047, -53.8189, "Ivinhema", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Ivinhema-MS_Final.pdf");
+    addCityMarker(-23.8917, -55.4308, "Paranhos", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Paranhos-MS_Final.pdf");
+    addCityMarker(-22.5361, -55.7256, "Ponta Porã", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Ponta-Pora-MS_final_atualizado.pdf");
+    addCityMarker(-20.4428, -53.7592, "Ribas do Rio Pardo", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Ribas-do-RP-MS_revMP_Assin-atualizacao.pdf");
+    addCityMarker(-20.3639, -51.4219, "Selviria", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Selviria_revMP_Assin-atualizacao.pdf");
+    addCityMarker(-20.9319, -54.9619, "Sidrolândia", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Sidrolandia-MS_revMP_Assin-atualizacao.pdf");
+    addCityMarker(-17.5758, -54.7589, "Sonora", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Sonora-MS_rev2MP_Assin-atualizacao.pdf");
+    addCityMarker(-23.6361, -55.0158, "Tacuru", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Tacuru-MS_final.pdf");
+    addCityMarker(-22.4897, -53.3489, "Taquarussu", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Taquarussu-MS_final.pdf");
+    addCityMarker(-20.4422, -54.8606, "Terenos", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Terenos-MS_revMP_Assin-atualizaca.pdf");
+    addCityMarker(-20.4833, -55.8, "Anastácio", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Anastacio-MS_revMP_Assin-atualizacao.pdf");
+    addCityMarker(-20.0872, -51.0939, "Aparecida do Taboado", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Aparecida-do-Taboado-MS_assin-atualizacao.pdf");
+    addCityMarker(-20.4708, -55.7869, "Aquidauana", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Aquidauana-MS_revMP_Assin-atualizacao.pdf");
+    addCityMarker(-20.5389, -56.7169, "Bodoquena", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Bodoquena_Final.pdf");
+    addCityMarker(-21.2553, -52.0369, "Brasilândia", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Brasilandia-MS_Final.pdf");
+    addCityMarker(-19.0089, -57.6528, "Corumbá", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Corumba-MS__rev04_formatado.pdf");
+    addCityMarker(-18.5069, -54.7589, "Coxim", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Coxim-MS_revMP_posPref_Assin-atualizado.pdf");
+    addCityMarker(-20.7333, -55.3, "Dois Irmãos do Buriti", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Dois-Irmaos-MS_revMP_Assin-atualizado.pdf");
+    addCityMarker(-19.7278, -51.9289, "Inocência", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Inocencia-MS_revMP-posPrefeit_rev2_Assin-atulizado.pdf");
+    addCityMarker(-23.8917, -54.4058, "Japorã", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Japora-MS_final.pdf");
+    addCityMarker(-21.4808, -56.1381, "Jardim", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Jardim-MS_rev2MP_Assin-atualizado.pdf");
+    addCityMarker(-19.0089, -57.6, "Ladário", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Ladario-MS_revMP_Assin-atualizacao.pdf");
+    addCityMarker(-19.0522, -53.0008, "Paraiso das Águas", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Paraiso-das-Aguas-MS_revMP_Assin-atualizado.pdf");
+    addCityMarker(-18.9189, -54.8439, "Rio Verde de Mato Grosso", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-RioVerde-MS_revMP_Assin-atualizacao.pdf");
+    addCityMarker(-19.3958, -54.5689, "São Gabriel do Oeste", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Sao-Gabriel-do-Oeste-MS_rev2MP_Assin-atualizacao.pdf");
+    addCityMarker(-22.4097, -54.4419, "Vicentina", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Vicentina-MS-revisado_final.pdf");
+    addCityMarker(-18.3258, -53.7047, "Alcinópolis", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Alcinopolis-MS_revMP_posPrefeit-Atualizacao.pdf");
+    addCityMarker(-23.1058, -55.2253, "Amambai", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Amambai-MS_revMP_posPref_assin-Atualizacao.pdf");
+    addCityMarker(-22.1858, -52.7169, "Anaurilândia", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Anaurilandia_final.pdf");
+    addCityMarker(-22.1528, -53.7708, "Angélica", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Angelica-MS_v3_revisado.pdf");
+    addCityMarker(-21.7158, -52.4228, "Bataguassu", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Bataguassu-MS_revMP_posPrefeit_Assin-atualizacao.pdf");
+    addCityMarker(-22.6339, -54.8219, "Caarapó", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Caarapo-MS.pdf");
+    addCityMarker(-22.0139, -57.0258, "Caracol", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Caracol-MS.pdf");
+    addCityMarker(-19.1139, -51.7319, "Cassilândia", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Cassilandia-MS.pdf");
+    addCityMarker(-22.2758, -54.1658, "Deodápolis", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Deodapolis-MS_v3_revisado.pdf");
+    addCityMarker(-23.7869, -54.2839, "Eldorado", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Eldorado-MS_revisado_final.pdf");
+    addCityMarker(-23.6739, -54.5619, "Iguatemi", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Iguatemi-MS_revisado_final.pdf");
+    addCityMarker(-22.08, -54.7858, "Itaporã", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Itapora_final.pdf");
+    addCityMarker(-22.4808, -54.3039, "Jateí", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Jatei-MS_revisado_final.pdf");
+    addCityMarker(-22.5458, -55.15, "Laguna Carapã", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Laguna-Carapa_final.pdf");
+    addCityMarker(-23.9358, -54.2889, "Mundo Novo", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Mundo-Novo-MS_v3_revisado.pdf");
+    addCityMarker(-23.0658, -54.1919, "Naviraí", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Navirai_final.pdf");
+    addCityMarker(-22.2189, -53.3519, "Novo Horizonte do Sul", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Novo-Horizonte-do-Sul-MS_final.pdf");
+    addCityMarker(-18.1, -54.55, "Pedro Gomes", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Pedro-Gomes-MS.pdf");
+    addCityMarker(-19.4478, -54.9858, "Rio Negro", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Rio-Negro-MS.pdf");
+    addCityMarker(-19.9519, -54.8939, "Rochedo", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Rochedo-MS.pdf");
+    addCityMarker(-21.3019, -52.8339, "Santa Rita do Pardo", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Santa-Rita-do-Pardo-MS_v2.pdf");
+    addCityMarker(-23.9708, -55.0389, "Sete Quedas", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Sete-Quedas-MS_v3_revisado.pdf");
+    addCityMarker(-20.4458, -52.8789, "Agua Clara", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Agua-Clara-MS.pdf");
+    addCityMarker(-22.295, -53.2708, "Batayporã", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-gestao-de-RS-de-Bataypora_final.pdf");
+    addCityMarker(-22.1089, -56.5219, "Bela Vista", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Bela-Vista-MS_v4.pdf");
+    addCityMarker(-21.1261, -56.4836, "Bonito", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Bonito_final.pdf");
+    addCityMarker(-18.7889, -52.6258, "Chapadão do Sul", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Chapadao-do-Sul_final.pdf");
+    addCityMarker(-19.8319, -54.8289, "Corguinho", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Corguinho_final.pdf");
+    addCityMarker(-23.2722, -55.5278, "Coronel Sapucaia", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Coronel-Sapucaia_final.pdf");
+    addCityMarker(-18.5439, -53.1289, "Costa Rica", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Costa-Rica_final.pdf");
+    addCityMarker(-22.04, -54.6158, "Douradina", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Douradina-MS_final.pdf");
+    addCityMarker(-18.6789, -53.6389, "Figueirão", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Figueirao-MS.pdf");
+    addCityMarker(-21.4583, -56.1139, "Guia Lopes da Laguna", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Guia-Lopes-da-Laguna_final.pdf");
+    addCityMarker(-23.4739, -54.1872, "Itaquiraí", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-gestao-de-RS-de-Itaquirai_final.pdf");
+    addCityMarker(-20.1389, -54.3989, "Jaraguari", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Jaraguari-MS.pdf");
+    addCityMarker(-20.2406, -56.3781, "Miranda", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Miranda-MS.pdf");
+    addCityMarker(-21.1358, -55.8289, "Nioaque", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Nioaque-MS.pdf");
+    addCityMarker(-21.4658, -54.3839, "Nova Alvorada do Sul", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Nova-Alvorada-do-Sul_final.pdf");
+    addCityMarker(-22.2328, -53.3439, "Nova Andradina", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-gestao-de-RS-de-NovaAndradina_final.pdf");
+    addCityMarker(-19.6758, -51.1908, "Paranaíba", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Paranaiba_final.pdf");
+    addCityMarker(-21.6989, -57.8839, "Porto Murtinho", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Porto-Murtinho-MS.pdf");
+    addCityMarker(-21.8019, -54.5469, "Rio Brilhante", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Rio-Brilhante-MS.pdf");
+    addCityMarker(-20.7519, -51.6789, "Três Lagoas", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-Gestao-de-RS-de-Tres-Lagoas_final.pdf");
+    addCityMarker(-22.86, -54.6058, "Juti", "https://portalresiduosms.online/wp-content/uploads/2025/03/Panorama-de-gestao-de-RS-de-Juti_final.pdf");
+</script>
