@@ -191,10 +191,19 @@
 
     // Objeto para armazenar todos os marcadores
     var cityMarkers = {};
+    var greenIcon = new L.Icon({
+    iconUrl: 'https://cdn.jsdelivr.net/gh/pointhi/leaflet-color-markers@master/img/marker-icon-green.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    tooltipAnchor: [16, -28],
+    shadowSize: [41, 41]
+});
 
     // Função para adicionar marcadores
     function addCityMarker(lat, lng, cityName, pdfUrl) {
-        var marker = L.marker([lat, lng]).addTo(map);
+           var marker = L.marker([lat, lng], { icon: greenIcon }).addTo(map);
 
         // Armazena o marcador no objeto
         cityMarkers[cityName.toLowerCase()] = marker;
@@ -208,28 +217,28 @@
 
         // Popup com PDF (aparece ao clicar)
         marker.bindPopup(`
-                <div style="max-width: 250px;">
-                    <h3 style="margin-top: 0;">${cityName}</h3>
-                    <p>Relatório de Gestão de Resíduos Sólidos:</p>
-                    <a href="#" 
-                        onclick="openPdfModal('${cityName}', '${pdfUrl}'); return false;" 
-                        style="display: inline-block; 
-                                padding: 6px 15px; 
-                                background-color: #28a745; 
-                                color: white !important; 
-                                font-weight: bold; 
-                                text-decoration: none !important; 
-                                border-radius: 15px; 
-                                border: 1px solid #28a745; 
-                                transition: all 0.3s ease; 
-                                text-align: center; 
-                                cursor: pointer;"
-                        onmouseover="this.style.backgroundColor='#218838'; this.style.borderColor='#218838'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 2px 4px rgba(0, 0, 0, 0.1)';"
-                        onmouseout="this.style.backgroundColor='#28a745'; this.style.borderColor='#28a745'; this.style.transform='none'; this.style.boxShadow='none'">
-                        <i class="bi bi-file-earmark-pdf" style="margin-right: 5px;"></i> Abrir PDF
-                    </a>
-                </div>
-            `);
+            <div style="max-width: 250px;">
+                <h3 style="margin-top: 0;">${cityName}</h3>
+                <p>Relatório de Gestão de Resíduos Sólidos:</p>
+                <a href="#" 
+                    onclick="openPdfModal('${cityName}', '${pdfUrl}'); return false;" 
+                    style="display: inline-block; 
+                            padding: 6px 15px; 
+                            background-color: #28a745; 
+                            color: white !important; 
+                            font-weight: bold; 
+                            text-decoration: none !important; 
+                            border-radius: 15px; 
+                            border: 1px solid #28a745; 
+                            transition: all 0.3s ease; 
+                            text-align: center; 
+                            cursor: pointer;"
+                    onmouseover="this.style.backgroundColor='#218838'; this.style.borderColor='#218838'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 2px 4px rgba(0, 0, 0, 0.1)';"
+                    onmouseout="this.style.backgroundColor='#28a745'; this.style.borderColor='#28a745'; this.style.transform='none'; this.style.boxShadow='none'">
+                    <i class="bi bi-file-earmark-pdf" style="margin-right: 5px;"></i> Abrir PDF
+                </a>
+            </div>
+        `);
     }
 
     // Função para abrir o modal com o PDF
